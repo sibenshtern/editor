@@ -56,17 +56,9 @@ class EditorWindowUI(QMainWindow):
         toolbar_container = QWidget()
         toolbar_layout = QHBoxLayout(toolbar_container)
 
-        # Create grid layout for buttons
         grid_layout = QGridLayout()
         grid_layout.setSpacing(5)
 
-        # Row 0: Labels
-        labels = ["Blocks", "Instances", "Pins", "Nets", "Junctions", "Edit"]
-        for col, label_text in enumerate(labels):
-            label = QLabel(label_text)
-            grid_layout.addWidget(label, 0, col)
-
-        # Row 1: Add buttons
         self.add_block = QPushButton("Add block")
         self.add_instance = QPushButton("Add instance")
         self.add_pin = QPushButton("Add pin")
@@ -81,7 +73,6 @@ class EditorWindowUI(QMainWindow):
         grid_layout.addWidget(self.add_junction, 1, 4)
         grid_layout.addWidget(self.btn_undo, 1, 5)
 
-        # Row 2: Delete buttons
         self.del_block = QPushButton("Delete block")
         self.del_instance = QPushButton("Delete instance")
         self.del_pin = QPushButton("Delete pin")
@@ -96,14 +87,12 @@ class EditorWindowUI(QMainWindow):
         grid_layout.addWidget(self.del_junction, 2, 4)
         grid_layout.addWidget(self.btn_redo, 2, 5)
 
-        # Row 3: Copy buttons
         self.copy_block = QPushButton("Copy block")
         self.copy_instance = QPushButton("Copy instance")
 
         grid_layout.addWidget(self.copy_block, 4, 0)
         grid_layout.addWidget(self.copy_instance, 4, 1)
 
-        # Row 4: Rename buttons
         self.rename_block = QPushButton("Rename block")
         self.rename_instance = QPushButton("Rename instance")
         self.rename_pin = QPushButton("Rename pin")
@@ -116,6 +105,8 @@ class EditorWindowUI(QMainWindow):
 
         toolbar_layout.addLayout(grid_layout)
         toolbar_layout.addStretch()
+        
+        toolbar_container.setFixedSize(1000, 150)
 
         parent_layout.addWidget(toolbar_container)
 
@@ -134,7 +125,6 @@ class EditorWindowUI(QMainWindow):
         right_layout.addWidget(QLabel("Editor zone"))
 
         self.graphics_frame = QWidget()
-        self.graphics_frame.setMinimumHeight(400)
 
         right_layout.addWidget(self.graphics_frame)
 
