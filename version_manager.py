@@ -13,7 +13,7 @@ class VersionManager:
     Undo/Redo работают через git checkout.
     """
 
-    def __init__(self, project_path: str, controller):
+    def __init__(self, project_path: str, filename: str, controller):
         """
         Инициализация менеджера версий
 
@@ -23,7 +23,9 @@ class VersionManager:
         """
         self.project_path = project_path
         self.controller = controller
-        self.git_dir = os.path.join(project_path, ".gitrepo")
+        self.git_dir = project_path  # Используем директорию проекта напрямую
+        self.filename = filename
+        self.project_file = os.path.join(self.git_dir, self.filename)
 
         # Инициализация git репозитория
         self._init_git()
@@ -31,26 +33,75 @@ class VersionManager:
         # Текущий указатель на коммит (для отслеживания позиции в истории)
         self.current_commit = self._get_current_commit()
 
+        # Проверяем и фиксируем изменения, если файл был изменен вне редактора
+        self._sync_external_changes()
+
     def _init_git(self):
         """Инициализация git репозитория"""
-        os.makedirs(self.git_dir, exist_ok=True)
-
         try:
-            # Проверяем, есть ли уже git репозиторий
-            if not os.path.exists(os.path.join(self.git_dir, ".git")):
+            # Проверяем, есть ли уже git репозиторий в директории проекта
+            if not self._git_repo_exists():
                 subprocess.run(["git", "init", self.git_dir], check=True)
                 # Настраиваем git, чтобы избежать ошибок с именем пользователя и email
                 subprocess.run(["git", "-C", self.git_dir, "config", "user.name", "NetlistEditor"], check=True)
                 subprocess.run(["git", "-C", self.git_dir, "config", "user.email", "netlist@editor.local"], check=True)
 
-                # Создаем начальный файл для первого коммита
-                initial_file = os.path.join(self.git_dir, "project_state.json")
-                with open(initial_file, "w", encoding="utf-8") as f:
-                    json.dump({"blocks": []}, f, indent=2)
-                subprocess.run(["git", "-C", self.git_dir, "add", "project_state.json"], check=True)
-                subprocess.run(["git", "-C", self.git_dir, "commit", "-m", "Initial commit"], check=True)
+                # Создаем начальный файл для первого коммита (если его нет)
+                if not os.path.exists(self.project_file):
+                    with open(self.project_file, "w", encoding="utf-8") as f:
+                        json.dump({"blocks": []}, f, indent=2)
+                    subprocess.run(["git", "-C", self.git_dir, "add", "-f", self.filename], check=True)
+                    subprocess.run(["git", "-C", self.git_dir, "commit", "-m", "Initial commit"], check=True)
         except Exception as e:
             print(f"Ошибка при инициализации git: {e}")
+
+    def _git_repo_exists(self) -> bool:
+        """Проверяет, существует ли git репозиторий в специальной поддиректории"""
+        try:
+            # Проверяем наличие .git внутри git_dir
+            git_subdir = os.path.join(self.git_dir, ".git")
+            return os.path.exists(git_subdir) and os.path.isdir(git_subdir)
+        except:
+            return False
+
+    def _sync_external_changes(self):
+        """Синхронизирует изменения файла, если он был изменен вне редактора"""
+        # Проверяем, есть ли файл и был ли он изменен с момента последнего коммита
+        if os.path.exists(self.project_file):
+            try:
+                # Получаем содержимое файла из последнего коммита
+                result = subprocess.run(
+                    ["git", "-C", self.git_dir, "show", f"HEAD:{self.filename}"],
+                    capture_output=True,
+                    text=True
+                )
+                if result.returncode == 0:
+                    last_commit_content = result.stdout
+                else:
+                    # Если файл не существовал в последнем коммите, считаем, что его нет
+                    last_commit_content = None
+
+                # Сравниваем с текущим содержимым файла
+                with open(self.project_file, "r", encoding="utf-8") as f:
+                    current_content = f.read()
+
+                if last_commit_content != current_content:
+                    print("Обнаружены внешние изменения файла, фиксируем в git...")
+                    # Добавляем и коммитим изменения
+                    subprocess.run(["git", "-C", self.git_dir, "add", "-f", self.filename], check=True)
+                    commit_message = f"External changes - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                    subprocess.run(["git", "-C", self.git_dir, "commit", "-m", commit_message], check=True)
+                    # Обновляем текущий коммит
+                    result = subprocess.run(
+                        ["git", "-C", self.git_dir, "rev-parse", "HEAD"],
+                        capture_output=True,
+                        text=True,
+                        check=True
+                    )
+                    self.current_commit = result.stdout.strip()
+                    print(f"Внешние изменения зафиксированы: {commit_message}, коммит: {self.current_commit[:7]}")
+            except Exception as e:
+                print(f"Ошибка при синхронизации внешних изменений: {e}")
 
     def save_state(self, action_name: str):
         """
@@ -60,14 +111,11 @@ class VersionManager:
             action_name: Описание действия для сообщения коммита
         """
         try:
-            # 1. Копируем файл в git репозиторий
-            project_file = os.path.join(self.git_dir, "project_state.json")
-
             # Сохраняем текущее состояние через существующий метод controller
-            self.controller.save_scene(project_file)
+            self.controller.save_scene(self.project_file)
 
-            # 2. Добавляем в индекс и делаем коммит
-            subprocess.run(["git", "-C", self.git_dir, "add", "project_state.json"], check=True)
+            # Добавляем в индекс и делаем коммит
+            subprocess.run(["git", "-C", self.git_dir, "add", "-f", self.filename], check=True)
             commit_message = f"{action_name} - {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
             result = subprocess.run(
                 ["git", "-C", self.git_dir, "commit", "-m", commit_message],
@@ -75,7 +123,7 @@ class VersionManager:
                 text=True
             )
 
-            # 3. Получаем хеш последнего коммита
+            # Получаем хеш последнего коммита
             result = subprocess.run(
                 ["git", "-C", self.git_dir, "rev-parse", "HEAD"],
                 capture_output=True,
@@ -97,13 +145,13 @@ class VersionManager:
             True если откат успешен, False в противном случае
         """
         try:
-            # 1. Получаем список коммитов
+            # Получаем список коммитов
             commits = self._get_commit_history()
             if len(commits) < 2:  # Нужно минимум 2 коммита (начальный + хотя бы один)
                 print("Нет изменений для отката")
                 return False
 
-            # 2. Находим текущий коммит в истории
+            # Находим текущий коммит в истории
             current_index = -1
             for i, commit in enumerate(commits):
                 if commit['hash'].startswith(self.current_commit):
@@ -114,22 +162,24 @@ class VersionManager:
             if current_index == -1:
                 current_index = 0
 
-            # 3. Проверяем, можно ли откатить (не в начале ли мы)
-            if current_index >= len(commits) - 1:  # Уже в самом начале истории
-                print("Невозможно откатить, достигнуто начало истории")
+            # Проверяем, можно ли откатить (не в начале ли мы)
+            # Теперь проверяем, является ли текущий коммит начальным коммитом
+            # Предполагаем, что начальный коммит - это первый коммит в репозитории
+            initial_commit = self._get_initial_commit()
+            if self.current_commit == initial_commit:
+                print("Невозможно откатить, достигнуто начальное состояние")
                 return False
 
-            # 4. Получаем хеш предыдущего коммита (в хронологическом порядке - следующий в списке)
+            # Получаем хеш предыдущего коммита (в хронологическом порядке - следующий в списке)
             prev_commit = commits[current_index + 1]['hash']
 
-            # 5. Переходим к предыдущему коммиту
-            subprocess.run(["git", "-C", self.git_dir, "checkout", prev_commit, "--", "project_state.json"], check=True)
+            # Переходим к предыдущему коммиту
+            subprocess.run(["git", "-C", self.git_dir, "checkout", prev_commit, "--", self.filename], check=True)
 
-            # 6. Загружаем состояние из git репозитория
-            git_project_file = os.path.join(self.git_dir, "project_state.json")
-            self.controller.load_scene(git_project_file)
+            # Загружаем состояние из файла в директории проекта
+            self.controller.load_scene(self.project_file)
 
-            # 7. Обновляем текущий коммит
+            # Обновляем текущий коммит
             self.current_commit = prev_commit
 
             print(f"Откат выполнена к коммиту: {prev_commit[:7]}")
@@ -138,8 +188,7 @@ class VersionManager:
         except Exception as e:
             print(f"Ошибка при откате: {e}")
             # Восстанавливаем рабочее состояние при ошибке
-            subprocess.run(["git", "-C", self.git_dir, "checkout", self.current_commit, "--", "project_state.json"],
-                           check=False)
+            subprocess.run(["git", "-C", self.git_dir, "checkout", self.current_commit, "--", self.filename], check=False)
             return False
 
     def redo(self) -> bool:
@@ -150,13 +199,13 @@ class VersionManager:
             True если возврат успешен, False в противном случае
         """
         try:
-            # 1. Получаем список коммитов
+            # Получаем список коммитов
             commits = self._get_commit_history()
             if len(commits) < 2:
                 print("Нет изменений для возврата")
                 return False
 
-            # 2. Находим текущий коммит в истории
+            # Находим текущий коммит в истории
             current_index = -1
             for i, commit in enumerate(commits):
                 if commit['hash'].startswith(self.current_commit):
@@ -167,22 +216,21 @@ class VersionManager:
             if current_index == -1:
                 current_index = 0
 
-            # 3. Проверяем, можно ли вернуть (не в конце ли мы)
+            # Проверяем, можно ли вернуть (не в конце ли мы)
             if current_index <= 0:  # Уже в конце истории
                 print("Невозможно вернуть изменения, достигнут конец истории")
                 return False
 
-            # 4. Получаем хеш следующего коммита (в хронологическом порядке - предыдущий в списке)
+            # Получаем хеш следующего коммита (в хронологическом порядке - предыдущий в списке)
             next_commit = commits[current_index - 1]['hash']
 
-            # 5. Переходим к следующему коммиту
-            subprocess.run(["git", "-C", self.git_dir, "checkout", next_commit, "--", "project_state.json"], check=True)
+            # Переходим к следующему коммиту
+            subprocess.run(["git", "-C", self.git_dir, "checkout", next_commit, "--", self.filename], check=True)
 
-            # 6. Загружаем состояние
-            git_project_file = os.path.join(self.git_dir, "project_state.json")
-            self.controller.load_scene(git_project_file)
+            # Загружаем состояние
+            self.controller.load_scene(self.project_file)
 
-            # 7. Обновляем текущий коммит
+            # Обновляем текущий коммит
             self.current_commit = next_commit
 
             print(f"Возврат выполнен к коммиту: {next_commit[:7]}")
@@ -191,8 +239,7 @@ class VersionManager:
         except Exception as e:
             print(f"Ошибка при возврате изменений: {e}")
             # Восстанавливаем рабочее состояние при ошибке
-            subprocess.run(["git", "-C", self.git_dir, "checkout", self.current_commit, "--", "project_state.json"],
-                           check=False)
+            subprocess.run(["git", "-C", self.git_dir, "checkout", self.current_commit, "--", self.filename], check=False)
             return False
 
     def _get_commit_history(self) -> List[Dict]:
@@ -204,8 +251,7 @@ class VersionManager:
         """
         try:
             result = subprocess.run(
-                ["git", "-C", self.git_dir, "log", "--pretty=format:%H|%s|%cd", "--date=iso", "--",
-                 "project_state.json"],
+                ["git", "-C", self.git_dir, "log", "--pretty=format:%H|%s|%cd", "--date=iso", "--", self.filename],
                 capture_output=True,
                 text=True,
                 check=True
@@ -259,6 +305,24 @@ class VersionManager:
                 return result.stdout.strip().split('\n')[0]
             except:
                 return None
+
+    def _get_initial_commit(self) -> str:
+        """
+        Получить первый коммит в репозитории
+
+        Returns:
+            Хеш первого коммита
+        """
+        try:
+            result = subprocess.run(
+                ["git", "-C", self.git_dir, "rev-list", "--max-parents=0", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=True
+            )
+            return result.stdout.strip().split('\n')[0]
+        except:
+            return None
 
     def get_history(self) -> List[Dict]:
         """
@@ -347,11 +411,15 @@ if __name__ == "__main__":
     print("\nВыполняем еще один undo (откат создания BlockB):")
     version_manager.undo()
 
-    print("\nИстория после двух откатов:")
+    # 6. Попытка сделать undo от начального состояния
+    print("\nПопытка выполнить undo от начального состояния:")
+    version_manager.undo()
+
+    print("\nИстория после попытки отката от начального состояния:")
     for entry in version_manager.get_history():
         print(f"- {entry['action']} ({entry['commit']})")
 
-    # 6. Делаем redo
+    # 7. Делаем redo
     print("\nВыполняем redo (возврат BlockB):")
     version_manager.redo()
 
@@ -359,31 +427,27 @@ if __name__ == "__main__":
     print(controller.data)
 
     print("\n" + "=" * 50)
-    print("ТЕПЕРЬ ДЕМОНСТРАЦИЯ ВОССТАНОВЛЕНИЯ ИСТОРИИ ПРИ НОВОМ ЗАПУСКЕ")
+    print("ТЕПЕРЬ ДЕМОНСТРАЦИЯ СИНХРОНИЗАЦИИ ВНЕШНИХ ИЗМЕНЕНИЙ")
     print("=" * 50)
 
-    # Эмуляция нового запуска приложения - создаем новый экземпляр
-    print("\nСоздаем новый экземпляр VersionManager для эмуляции нового запуска...")
+    # Эмуляция внешнего изменения файла
+    print("\nЭмулируем внешнее изменение файла...")
+    external_data = {"blocks": [{"name": "ExternalBlock", "instances": []}]}
+    external_file_path = os.path.join(temp_dir, "project_state.json")
+    with open(external_file_path, "w", encoding="utf-8") as f:
+        json.dump(external_data, f, indent=2)
+    print(f"Файл изменен внешней программой: {external_data}")
+
+    # Создаем новый экземпляр менеджера для симуляции перезапуска
+    print("\nСоздаем новый экземпляр VersionManager для симуляции перезапуска...")
     new_controller = MockController()
     new_version_manager = VersionManager(temp_dir, new_controller)
 
-    print(
-        f"Текущий коммит при новом запуске: {new_version_manager.current_commit[:7] if new_version_manager.current_commit else 'None'}")
-
-    print("\nИстория при новом запуске:")
+    print("\nИстория после синхронизации внешних изменений:")
     for entry in new_version_manager.get_history():
         print(f"- {entry['action']} ({entry['commit']})")
 
-    print("\nПопытка выполнить undo после нового запуска:")
-    if new_version_manager.undo():
-        print("Undo после нового запуска успешен!")
-    else:
-        print("Undo после нового запуска не удался")
-
-    print(
-        f"Текущий коммит после undo: {new_version_manager.current_commit[:7] if new_version_manager.current_commit else 'None'}")
-
-    print("\nСостояние проекта после undo нового запуска:")
+    print(f"\nСостояние проекта после синхронизации внешних изменений:")
     print(new_controller.data)
 
     print("\nДемонстрация завершена")
