@@ -20,7 +20,20 @@
         }
       ],
       "instances": [],
-      "wires": [],
+      "wires": [
+        {
+          "id": "426338e3-4d01-4af4-8263-5fef3fd243fe",
+          "name": "net_1",
+          "start": [
+            "block:c106492f-3e9d-40b1-b9e8-0e67970bc828",
+            "P1"
+          ],
+          "end": [
+            "block:c106492f-3e9d-40b1-b9e8-0e67970bc828",
+            "P2"
+          ]
+        }
+      ],
       "junctions": []
     },
     {
