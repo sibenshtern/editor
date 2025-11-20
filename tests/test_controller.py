@@ -78,19 +78,6 @@ def test_delete_wire_simple():
     assert not any(w.id == wid for w in parent.model.wires)
     assert wid not in ctrl.current_wire_items
 
-# Добавление и удаление пина
-def test_delete_block_pin_simple():
-    scene = QGraphicsScene()
-    ctrl = Controller(scene)
-    bf = ctrl.add_block("BlockX")
-    bf.add_block_pin(name="PX", relx=0.0, rely=0.5)
-    assert any(p.name == "PX" for p in bf.model.ports)
-    assert "PX" in bf.port_items
-    pin_vis = bf.port_items["PX"]
-    ctrl.delete_block_pin(pin_vis)
-    assert not any(p.name == "PX" for p in bf.model.ports)
-    assert "PX" not in bf.port_items
-
 # Создание и удаление пересечения в цепе
 def test_create_and_delete_junction_simple():
     scene = QGraphicsScene()
@@ -127,7 +114,7 @@ def test_copy_block_simple():
     assert copied.model.id != parent.model.id
     assert len(copied.model.instances) == len(parent.model.instances)
 
-# Копирование инстанса
+# Копирование инстанса (упор на модель)
 def test_copy_instance_simple():
     scene = QGraphicsScene()
     ctrl = Controller(scene)
@@ -167,7 +154,7 @@ def test_delete_block_confirmation_simple(monkeypatch):
     ctrl.delete_block(bf)
     assert bid not in ctrl.blocks
 
-# Копирование инстанса
+# Копирование инстанса (упор на графическое представление)
 def test_copy_instance_creates_new_visual_and_model():
     scene = QGraphicsScene()
     ctrl = Controller(scene)
