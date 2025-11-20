@@ -51,13 +51,27 @@ class Editor(QMainWindow):
         
         # Initialize version manager
         version_dir = os.path.join(os.path.curdir, "curcuit_project/.curcuit_cache`")
+        filename = "project_state.json"
         os.makedirs(version_dir, exist_ok=True)
-        self.version_manager = VersionManager(version_dir, self.controller)
-        
-        # Initialize default blocks
-        self.controller.add_block("BlockA")
-        self.controller.add_block("BlockB")
-        
+
+        # Check if there's a saved state to load
+        saved_state_file = os.path.join(version_dir, filename)
+        if os.path.exists(saved_state_file):
+            # Load the saved state
+            try:
+                self.controller.load_scene(saved_state_file)
+            except Exception as e:
+                print(f"Error loading saved state: {e}")
+                # Fall back to default state
+                self.controller.add_block("BlockA")
+                self.controller.add_block("BlockB")
+        else:
+            # Create default state
+            self.controller.add_block("BlockA")
+            self.controller.add_block("BlockB")
+
+        self.version_manager = VersionManager(version_dir, filename, self.controller)
+
         self.setup_menu_bar()
         self.setup_connections()
         self.refresh_objects_list()
@@ -65,9 +79,14 @@ class Editor(QMainWindow):
         if self.ui.objects_list.count() > 0:
             self.ui.objects_list.setCurrentRow(0)
             self._show_block_by_index(0)
-        
-        # Save initial state
-        self._save_version("Initial state")
+
+        # Save initial state only if we didn't load from file
+        if not os.path.exists(saved_state_file):
+            # Save initial state
+            try:
+                self.version_manager.save_state("Initial state")
+            except Exception as e:
+                print(f"Error saving initial state: {e}")
 
     def _save_version(self, action_name: str):
         """Save current state to version manager."""
