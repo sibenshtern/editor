@@ -3,28 +3,53 @@ import json
 import subprocess
 import uuid
 import datetime
-from typing import List, Dict
+import hashlib
+from typing import List, Dict, Optional
 
 
 class VersionManager:
     """
     Простая система версионирования через git.
+    Создает отдельный репозиторий для каждого файла.
     Сохраняет состояние проекта в git после каждого действия.
     Undo/Redo работают через git checkout.
     """
 
-    def __init__(self, project_path: str, filename: str, controller):
+    # Центральная директория для хранения всех репозиториев
+    HISTORY_BASE_DIR = os.path.join(os.path.curdir, ".editor_history")
+    MAPPING_FILE = os.path.join(HISTORY_BASE_DIR, "file_mapping.json")
+
+    def __init__(self, file_path: Optional[str], controller):
         """
         Инициализация менеджера версий
 
         Args:
-            project_path: Путь к папке проекта
+            file_path: Путь к редактируемому файлу (None для unsaved файлов)
             controller: Ссылка на controller из graphical.py для сохранения/загрузки
         """
-        self.project_path = project_path
         self.controller = controller
-        self.git_dir = project_path  # Используем директорию проекта напрямую
-        self.filename = filename
+        self.file_path = file_path
+        self.repository_id = None
+        
+        # Инициализируем базовую директорию
+        os.makedirs(self.HISTORY_BASE_DIR, exist_ok=True)
+        
+        # Загружаем маппинг файлов
+        self.mapping = self._load_mapping()
+        
+        # Определяем или создаем репозиторий для файла
+        if file_path:
+            # Для сохраненных файлов используем хеш пути или существующий репозиторий
+            normalized_path = os.path.normpath(os.path.abspath(file_path))
+            self.repository_id = self._get_or_create_repository_id(normalized_path)
+        else:
+            # Для unsaved файлов создаем новый UUID
+            self.repository_id = str(uuid.uuid4())
+            print(f"Created new repository for unsaved file: {self.repository_id}")
+        
+        # Настраиваем пути
+        self.git_dir = os.path.join(self.HISTORY_BASE_DIR, self.repository_id)
+        self.filename = "project_state.json"
         self.project_file = os.path.join(self.git_dir, self.filename)
 
         # Инициализация git репозитория
@@ -34,7 +59,91 @@ class VersionManager:
         self.current_commit = self._get_current_commit()
 
         # Проверяем и фиксируем изменения, если файл был изменен вне редактора
-        self._sync_external_changes()
+        if file_path and os.path.exists(file_path):
+            self._sync_external_changes()
+
+    def _load_mapping(self) -> Dict:
+        """Загрузить маппинг файлов из JSON"""
+        if os.path.exists(self.MAPPING_FILE):
+            try:
+                with open(self.MAPPING_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"Error loading mapping file: {e}")
+        return {}
+
+    def _save_mapping(self):
+        """Сохранить маппинг файлов в JSON"""
+        try:
+            with open(self.MAPPING_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.mapping, f, indent=2)
+        except Exception as e:
+            print(f"Error saving mapping file: {e}")
+
+    def _get_or_create_repository_id(self, file_path: str) -> str:
+        """Получить или создать ID репозитория для файла"""
+        # Проверяем, есть ли уже репозиторий для этого файла
+        if file_path in self.mapping:
+            return self.mapping[file_path]
+        
+        # Создаем новый ID репозитория на основе хеша пути
+        path_hash = hashlib.md5(file_path.encode()).hexdigest()[:16]
+        repo_id = f"file_{path_hash}"
+        
+        # Сохраняем маппинг
+        self.mapping[file_path] = repo_id
+        self._save_mapping()
+        
+        return repo_id
+
+    def associate_with_file(self, file_path: str):
+        """Связать текущий репозиторий с файлом"""
+        normalized_path = os.path.normpath(os.path.abspath(file_path))
+        
+        # Если для этого файла уже есть другой репозиторий, используем его
+        if normalized_path in self.mapping:
+            existing_repo_id = self.mapping[normalized_path]
+            if existing_repo_id != self.repository_id:
+                # Сохраняем текущее состояние в текущий репозиторий перед переключением
+                try:
+                    # Сохраняем текущее состояние в текущий репозиторий
+                    self.controller.save_scene(self.project_file)
+                    subprocess.run(["git", "-C", self.git_dir, "add", "-f", self.filename], check=False)
+                    subprocess.run(["git", "-C", self.git_dir, "commit", "-m", f"Final state before file association"], check=False)
+                except Exception:
+                    pass
+                
+                # Переключаемся на существующий репозиторий
+                old_repo_id = self.repository_id
+                self.repository_id = existing_repo_id
+                self.git_dir = os.path.join(self.HISTORY_BASE_DIR, self.repository_id)
+                self.project_file = os.path.join(self.git_dir, self.filename)
+                self.file_path = normalized_path
+                self.current_commit = self._get_current_commit()
+                
+                # Копируем текущее состояние файла в новый репозиторий
+                if os.path.exists(file_path):
+                    try:
+                        # Сохраняем файл в новый репозиторий и коммитим
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                        with open(self.project_file, "w", encoding="utf-8") as f:
+                            f.write(content)
+                        subprocess.run(["git", "-C", self.git_dir, "add", "-f", self.filename], check=False)
+                        subprocess.run(["git", "-C", self.git_dir, "commit", "-m", f"Associated with file: {os.path.basename(file_path)}"], check=False)
+                        self.current_commit = self._get_current_commit()
+                    except Exception as e:
+                        print(f"Error copying state to existing repository: {e}")
+                
+                print(f"Switched to existing repository {self.repository_id} for file {normalized_path}")
+                return
+        
+        # Связываем текущий репозиторий с файлом
+        self.file_path = normalized_path
+        self.mapping[normalized_path] = self.repository_id
+        self._save_mapping()
+        
+        print(f"Associated repository {self.repository_id} with file {normalized_path}")
 
     def _init_git(self):
         """Инициализация git репозитория"""
@@ -66,26 +175,27 @@ class VersionManager:
 
     def _sync_external_changes(self):
         """Синхронизирует изменения файла, если он был изменен вне редактора"""
-        # Проверяем, есть ли файл и был ли он изменен с момента последнего коммита
-        if os.path.exists(self.project_file):
+        # Синхронизируем внешний файл с внутренним файлом репозитория
+        if self.file_path and os.path.exists(self.file_path):
             try:
-                # Получаем содержимое файла из последнего коммита
-                result = subprocess.run(
-                    ["git", "-C", self.git_dir, "show", f"HEAD:{self.filename}"],
-                    capture_output=True,
-                    text=True
-                )
-                if result.returncode == 0:
-                    last_commit_content = result.stdout
+                # Сохраняем текущее состояние во внешний файл в репозиторий
+                # Копируем содержимое внешнего файла в файл репозитория
+                with open(self.file_path, "r", encoding="utf-8") as f:
+                    external_content = f.read()
+                
+                # Сохраняем во временный файл репозитория для сравнения
+                if os.path.exists(self.project_file):
+                    with open(self.project_file, "r", encoding="utf-8") as f:
+                        repo_content = f.read()
                 else:
-                    # Если файл не существовал в последнем коммите, считаем, что его нет
-                    last_commit_content = None
+                    repo_content = None
 
-                # Сравниваем с текущим содержимым файла
-                with open(self.project_file, "r", encoding="utf-8") as f:
-                    current_content = f.read()
-
-                if last_commit_content != current_content:
+                # Если содержимое отличается, коммитим изменения
+                if external_content != repo_content:
+                    # Сохраняем внешний файл в репозиторий
+                    with open(self.project_file, "w", encoding="utf-8") as f:
+                        f.write(external_content)
+                    
                     print("Обнаружены внешние изменения файла, фиксируем в git...")
                     # Добавляем и коммитим изменения
                     subprocess.run(["git", "-C", self.git_dir, "add", "-f", self.filename], check=True)
@@ -103,16 +213,27 @@ class VersionManager:
             except Exception as e:
                 print(f"Ошибка при синхронизации внешних изменений: {e}")
 
-    def save_state(self, action_name: str):
+    def save_state(self, action_name: str, save_to_file: Optional[str] = None):
         """
         Сохранить текущее состояние проекта в git
 
         Args:
             action_name: Описание действия для сообщения коммита
+            save_to_file: Если указан, сохранить также во внешний файл (для saved файлов)
         """
         try:
             # Сохраняем текущее состояние через существующий метод controller
-            self.controller.save_scene(self.project_file)
+            # Сначала сохраняем во внешний файл, если он указан
+            if save_to_file:
+                self.controller.save_scene(save_to_file)
+                # Копируем содержимое внешнего файла в файл репозитория
+                with open(save_to_file, "r", encoding="utf-8") as f:
+                    content = f.read()
+                with open(self.project_file, "w", encoding="utf-8") as f:
+                    f.write(content)
+            else:
+                # Для unsaved файлов сохраняем в файл репозитория
+                self.controller.save_scene(self.project_file)
 
             # Добавляем в индекс и делаем коммит
             subprocess.run(["git", "-C", self.git_dir, "add", "-f", self.filename], check=True)
