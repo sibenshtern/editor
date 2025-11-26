@@ -51,11 +51,6 @@ class Editor(QMainWindow):
         # Initialize version manager (None means unsaved file - will create UUID repository)
         self.version_manager = VersionManager(None, self.controller)
 
-        # Initialize default blocks
-        self.controller.add_block("BlockA")
-        self.controller.add_block("BlockB")
-
-
         self.setup_menu_bar()
         self.setup_connections()
         self.refresh_objects_list()

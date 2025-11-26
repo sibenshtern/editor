@@ -555,7 +555,7 @@ class Controller:
         self._visible_block_id: Optional[str] = None
 
     def add_block(self, name: str = "Block") -> 'BlockFrame':
-        bm = BlockModel(name=name, x=40.0 + len(self.blocks) * 420.0, y=60.0)
+        bm = BlockModel(name=name, x=40.0, y=60.0)
         bf = BlockFrame(bm, self)
         self.scene.addItem(bf)
         self.blocks[bm.id] = bf
