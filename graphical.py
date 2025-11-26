@@ -1174,7 +1174,19 @@ class Controller:
         new_inst_item = parent_frame._create_instance_visual(new_inst_model)
 
         return new_inst_item
-    
+
+    def get_instances(self, block_name: str) -> Optional[list[InstanceItem]]:
+        result = []
+
+        for block in self.blocks.values():
+            instances = block.instance_items.values()
+            for instance in instances:
+                if not instance.model.block_name == block_name: continue
+
+                result.append(instance)
+
+        return result
+
     def get_block_by_id(self, block_id: str) -> Optional[BlockModel]:
         return self.blocks.get(block_id, None).model
     
@@ -1254,9 +1266,6 @@ class BlockFrame(QGraphicsRectItem):
         item = InstanceItem(inst_model, self.controller)
         item.setParentItem(self)
         item.setPos(inst_model.x, inst_model.y)
-        # for bp in self.model.ports:
-        #     if bp.name not in [p.name for p in inst_model.ports]:
-        #         inst_model.ports.append(PortModel(bp.name, bp.x, bp.y))
         for pm in inst_model.ports:
             if pm.name not in item.port_items:
                 item.port_items[pm.name] = PortItem(item, pm,
@@ -1434,6 +1443,372 @@ class BlockFrame(QGraphicsRectItem):
         self.controller.propagate_new_pin_to_instances(self.model.id, pm)
         return pm
 
+
+class BlockEditor(QWidget):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Block Editor — final (PyQt6)")
+        self.resize(1100, 750)
+        self.scene = QGraphicsScene()
+        self.scene.setBackgroundBrush(QBrush(QColor("#000000")))
+
+        self.view = QGraphicsView(self.scene)
+        try:
+            self.view.setRenderHints(QPainter.RenderHint.Antialiasing)
+        except Exception:
+            pass
+
+        self.controller = Controller(self.scene)
+
+        top_layout = QHBoxLayout()
+        btn_add_block = QPushButton("Add Block")
+        btn_add_inst = QPushButton("Add Instance")
+        btn_add_pin = QPushButton("Add Block Pin")
+        btn_add_wire = QPushButton("Add Wire")
+        btn_add_junction = QPushButton("Add Junction")
+        btn_delete = QPushButton("Delete Selected")
+        btn_save = QPushButton("Save")
+        btn_load = QPushButton("Load")
+        self.combo_blocks = QComboBox()
+
+        top_layout.addWidget(btn_add_block)
+        top_layout.addWidget(self.combo_blocks)
+        top_layout.addWidget(btn_add_inst)
+        top_layout.addWidget(btn_add_pin)
+        top_layout.addWidget(btn_add_wire)
+        top_layout.addWidget(btn_add_junction)
+        top_layout.addWidget(btn_delete)
+        top_layout.addWidget(btn_save)
+        top_layout.addWidget(btn_load)
+
+        main_layout = QVBoxLayout(self)
+        main_layout.addLayout(top_layout)
+        main_layout.addWidget(self.view)
+
+        btn_add_block.clicked.connect(self._on_add_block)
+        btn_add_inst.clicked.connect(self._on_add_instance)
+        btn_add_pin.clicked.connect(self._on_add_pin)
+        btn_add_wire.clicked.connect(self._on_add_wire)
+        btn_add_junction.clicked.connect(self._on_add_junction)
+        btn_delete.clicked.connect(self._on_delete_selected)
+        btn_save.clicked.connect(
+            lambda: self.controller.save_scene("scene_blocks.json"))
+        btn_load.clicked.connect(lambda: self._on_load_scene())
+
+        self.combo_blocks.currentIndexChanged.connect(self._on_combo_changed)
+        self._current_block_id: Optional[str] = None
+
+        self.active_mode = None
+        self.current_filter = None
+
+        b1 = self.controller.add_block("BlockA")
+        b2 = self.controller.add_block("BlockB")
+
+        self._refresh_combo()
+        if self.combo_blocks.count() > 0:
+            self.combo_blocks.setCurrentIndex(0)
+            self._show_block_by_index(0)
+
+    def _refresh_combo(self):
+        cur = self.combo_blocks.currentText()
+        self.combo_blocks.blockSignals(True)
+        self.combo_blocks.clear()
+        for bf in self.controller.blocks.values():
+            self.combo_blocks.addItem(bf.model.name, bf.model.id)
+        idx = self.combo_blocks.findText(cur)
+        if idx >= 0:
+            self.combo_blocks.setCurrentIndex(idx)
+        self.combo_blocks.blockSignals(False)
+
+    def _get_block_id_by_index(self, idx: int) -> Optional[str]:
+        if idx < 0:
+            return None
+        return self.combo_blocks.itemData(idx)
+
+    def _show_block_by_index(self, idx: int):
+        bid = self._get_block_id_by_index(idx)
+        if bid is None:
+            return
+        self.controller.show_only_block(bid)
+        self._current_block_id = bid
+
+    def _on_combo_changed(self, idx: int):
+        self._deactivate_mode()
+        new_bid = self._get_block_id_by_index(idx)
+        if new_bid is None:
+            return
+        if self._current_block_id is None:
+            self._show_block_by_index(idx);
+            return
+        if new_bid == self._current_block_id: return
+        ans = QMessageBox.question(self, "Save changes",
+                                   f"Save changes to current block '{self.controller.blocks[self._current_block_id].model.name}'?",
+                                   QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No | QMessageBox.StandardButton.Cancel)
+        if ans == QMessageBox.StandardButton.Cancel:
+            cur_idx = self.combo_blocks.findData(self._current_block_id)
+            if cur_idx >= 0:
+                self.combo_blocks.blockSignals(True)
+                self.combo_blocks.setCurrentIndex(cur_idx)
+                self.combo_blocks.blockSignals(False)
+            return
+        if ans == QMessageBox.StandardButton.Yes:
+            self.controller.save_scene("scene_blocks.json")
+        self._show_block_by_index(idx)
+
+    def _deactivate_mode(self):
+        if self.current_filter:
+            try:
+                self.view.viewport().removeEventFilter(self.current_filter)
+            except Exception:
+                pass
+            self.current_filter = None
+
+        if self.active_mode == 'wire':
+            self.controller.set_add_wire_mode(False)
+        elif self.active_mode == 'junction':
+            self.controller.set_add_junction_mode(False)
+
+        self.active_mode = None
+
+    def _on_add_block(self):
+        self._deactivate_mode()
+        name, ok = QInputDialog.getText(self, "New block", "Block name:",
+                                        text=f"Block{len(self.controller.blocks) + 1}")
+        if not ok or not name:
+            return
+        bf = self.controller.add_block(name)
+        self._refresh_combo()
+        idx = self.combo_blocks.findData(bf.model.id)
+        if idx >= 0:
+            self.combo_blocks.setCurrentIndex(idx)
+            self._show_block_by_index(idx)
+
+    def _on_add_instance(self):
+        self._deactivate_mode()
+        if len(self.controller.blocks) < 2:
+            QMessageBox.information(self, "Info", "Need at least two blocks.")
+            return
+        names = [bf.model.name for bf in self.controller.blocks.values()]
+        child_name, ok = QInputDialog.getItem(self, "Choose block to insert",
+                                              "Block:", names, 0, False)
+        if not ok: return
+        parent_name, ok = QInputDialog.getItem(self, "Choose parent block",
+                                               "Parent:", names, 0, False)
+        if not ok: return
+        if child_name == parent_name:
+            QMessageBox.warning(self, "Error",
+                                "Cannot insert block into itself.");
+            return
+        child_frame = next(bf for bf in self.controller.blocks.values() if
+                           bf.model.name == child_name)
+        parent_frame = next(bf for bf in self.controller.blocks.values() if
+                            bf.model.name == parent_name)
+        QMessageBox.information(self, "Place",
+                                "Click inside parent block to place instance.")
+
+        def handler(ev):
+            pos = self.view.mapToScene(ev.position().toPoint())
+            if parent_frame.mapRectToScene(parent_frame.rect()).contains(pos):
+                local = parent_frame.mapFromScene(pos)
+                parent_frame.add_instance(child_frame.model, local)
+                self._refresh_combo()
+                self.view.viewport().removeEventFilter(filter_obj)
+                return True
+            return False
+
+        class OneShot(QObject):
+            def eventFilter(self, obj, ev):
+                if ev.type() == 2: return handler(ev)
+                return False
+
+        filter_obj = OneShot();
+        self.view.viewport().installEventFilter(filter_obj)
+
+    def _on_add_pin(self):
+        self._deactivate_mode()
+        QMessageBox.information(self, "Add Pin",
+                                "Click inside the visible block to add a pin (copied into its instances).")
+
+        def handler(ev):
+            pos = self.view.mapToScene(ev.position().toPoint())
+            for bf in self.controller.blocks.values():
+                if bf.isVisible() and bf.mapRectToScene(bf.rect()).contains(
+                        pos):
+                    self._controller_add_block_pin_at_point(bf, pos)
+                    self.view.viewport().removeEventFilter(filter_obj)
+                    return True
+            return False
+
+        class OneShot(QObject):
+            def eventFilter(self, obj, ev):
+                if ev.type() == 2: return handler(ev)
+                return False
+
+        filter_obj = OneShot();
+        self.view.viewport().installEventFilter(filter_obj)
+
+    def _controller_add_block_pin_at_point(self, block_frame: BlockFrame,
+                                           scene_pos: QPointF):
+        local = block_frame.mapFromScene(scene_pos)
+        rect = block_frame.rect()
+        lx = min(max(local.x(), 0.0), rect.width());
+        ly = min(max(local.y(), 0.0), rect.height())
+        left = lx;
+        right = rect.width() - lx;
+        top = ly;
+        bottom = rect.height() - ly
+        m = min(left, right, top, bottom)
+        if m == left:
+            nx, ny = 0.0, ly
+        elif m == right:
+            nx, ny = rect.width(), ly
+        elif m == top:
+            nx, ny = lx, 0.0
+        else:
+            nx, ny = lx, rect.height()
+        relx = nx / rect.width() if rect.width() else 0.0
+        rely = ny / rect.height() if rect.height() else 0.0
+        block_frame.add_block_pin(name=None, relx=relx, rely=rely)
+        self.controller.show_only_block(self._current_block_id)
+
+    def _on_add_wire(self):
+        if self.active_mode == 'wire':
+            self._deactivate_mode()
+            return
+
+        self._deactivate_mode()
+        self.active_mode = 'wire'
+        self.controller.set_add_wire_mode(True)
+
+        QMessageBox.information(self, "Add Wire",
+                                "Click a pin/junction to start, then click another pin/junction to complete the wire. Click 'Add Wire' again to cancel.")
+
+        def handler(ev):
+            if ev.button() != Qt.MouseButton.LeftButton:
+                return False
+
+            pos = self.view.mapToScene(ev.position().toPoint())
+            items = self.scene.items(pos)
+
+            item = None
+            for it in items:
+                if isinstance(it, (PortItem, JunctionItem)):
+                    item = it
+                    break
+
+            if item is None:
+                return False
+
+            if self.controller.temp_wire_start is None:
+                self.controller.start_wire(item)
+                return True
+            else:
+                self.controller.finish_wire(item)
+                # after finish we want to exit the mode automatically:
+                self._deactivate_mode()
+                return True
+
+        class WireModeFilter(QObject):
+            def eventFilter(self, obj, ev):
+                if ev.type() == 2:
+                    return handler(ev)
+                return False
+
+        self.current_filter = WireModeFilter()
+        self.view.viewport().installEventFilter(self.current_filter)
+
+    def _on_add_junction(self):
+        if self.active_mode == 'junction':
+            self._deactivate_mode()
+            return
+
+        self._deactivate_mode()
+        self.active_mode = 'junction'
+        self.controller.set_add_junction_mode(True)
+
+        QMessageBox.information(self, "Add Junction",
+                                "Click on an existing wire to add a junction. Click 'Add Junction' again to cancel.")
+
+        def handler(ev):
+            if ev.button() != Qt.MouseButton.LeftButton:
+                return False
+
+            pos = self.view.mapToScene(ev.position().toPoint())
+            items = self.scene.items(pos)
+
+            for it in items:
+                if isinstance(it, JunctionItem):
+                    return False
+
+            wire_item = None
+            for it in items:
+                if isinstance(it, WireItem):
+                    wire_item = it
+                    break
+
+            if wire_item is not None:
+                self.controller.create_junction_at(pos, wire_item)
+                self._deactivate_mode()
+                return True
+
+            return False
+
+        class JunctionModeFilter(QObject):
+            def eventFilter(self, obj, ev):
+                if ev.type() == 2:
+                    result = handler(ev)
+                    if result:
+                        ev.accept()
+                        return True
+                    return False
+                return False
+
+        self.current_filter = JunctionModeFilter()
+        self.view.viewport().installEventFilter(self.current_filter)
+
+    def _on_delete_selected(self):
+        self._deactivate_mode()
+        selected = list(self.scene.selectedItems())
+        if not selected:
+            QMessageBox.information(self, "Delete", "No selection.")
+            return
+        blocks = [it for it in selected if isinstance(it, BlockFrame)]
+        instances = [it for it in selected if isinstance(it, InstanceItem)]
+        ports = [it for it in selected if isinstance(it, PortItem)]
+        wires = [it for it in selected if isinstance(it, WireItem)]
+        junctions = [it for it in selected if isinstance(it, JunctionItem)]
+        for b in blocks: self.controller.delete_block(b)
+        for inst in instances: self.controller.delete_instance(inst)
+        for p in ports:
+            if p.owner_id and p.owner_id.startswith("block:"):
+                self.controller.delete_block_pin(p)
+            else:
+                QMessageBox.information(self, "Delete pin",
+                                        "Only deletion of block-level pins is supported via toolbar.")
+        for w in wires: self.controller.delete_wire(w)
+        for j in junctions: self.controller.delete_junction(j)
+        QMessageBox.information(self, "Delete", "Selected items processed.")
+        self._refresh_combo()
+        if self._current_block_id:
+            self.controller.show_only_block(self._current_block_id)
+
+    def keyPressEvent(self, ev):
+        if ev.key() == Qt.Key.Key_Escape:
+            self._deactivate_mode()
+        elif ev.key() == Qt.Key.Key_Delete:
+            self._on_delete_selected()
+        else:
+            super().keyPressEvent(ev)
+
+    def _on_load_scene(self):
+        self._deactivate_mode()
+        self.controller.load_scene("scene_blocks.json")
+        self._refresh_combo()
+        if self.combo_blocks.count() > 0:
+            self.combo_blocks.setCurrentIndex(0)
+            self._show_block_by_index(0)
+
+
 def project_point_to_segment_local(p: QPointF, a: QPointF, b: QPointF) -> \
 Tuple[QPointF, float]:
     """Project point p onto segment a-b (all in same coordinate space).
@@ -1452,3 +1827,10 @@ Tuple[QPointF, float]:
     t = max(0.0, min(1.0, t))
     proj = QPointF(ax + t * vx, ay + t * vy)
     return proj, t
+
+
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    editor = BlockEditor()
+    editor.show()
+    sys.exit(app.exec())

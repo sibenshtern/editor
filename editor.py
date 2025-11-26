@@ -20,8 +20,7 @@ class Editor(QMainWindow):
         
         # Initialize circuit object model
         self.netlist_project = NetlistProject("circuit_project")
-        self._create_default_blocks()
-        
+                
         self.ui = EditorWindowUI()
         self.ui.show()
         
@@ -62,13 +61,6 @@ class Editor(QMainWindow):
                 self.controller.load_scene(saved_state_file)
             except Exception as e:
                 print(f"Error loading saved state: {e}")
-                # Fall back to default state
-                self.controller.add_block("BlockA")
-                self.controller.add_block("BlockB")
-        else:
-            # Create default state
-            self.controller.add_block("BlockA")
-            self.controller.add_block("BlockB")
 
         self.version_manager = VersionManager(version_dir, filename, self.controller)
 
@@ -172,11 +164,6 @@ class Editor(QMainWindow):
                     if data_inst:
                         return data_inst.interface_pins.get(pin_name)
         return None
-
-    def _create_default_blocks(self):
-        """Create default blocks in the object model."""
-        self.netlist_project.add_block("BlockA")
-        self.netlist_project.add_block("BlockB")
 
     def setup_menu_bar(self):
         """Create the menu bar with File menu."""
@@ -328,9 +315,8 @@ class Editor(QMainWindow):
     def add_block(self):
         """Add a new block to both graphical and object model."""
         self._deactivate_mode()
-        name, ok = QInputDialog.getText(self, "New block", "Block name:",
-                                        text=f"Block{len(self.controller.blocks) + 1}")
-        if not ok or not name:
+        name = self.__get_new_name("New block", "Block name:", f"Block{len(self.controller.blocks) + 1}")
+        if not name:
             return
         
         if self._block_name_exists(name):
@@ -380,11 +366,11 @@ class Editor(QMainWindow):
             return
         
         block = blocks[0]
-        new_name, ok = QInputDialog.getText(
-            self, "Copy Block", "New block name:",
-            text=f"{block.model.name}_copy"
+        new_name = self.__get_new_name(
+            "Copy Block", "New block name:",
+            f"{block.model.name}_copy"
         )
-        if not ok or not new_name:
+        if not new_name:
             return
         
         # Check for unique name
@@ -427,10 +413,10 @@ class Editor(QMainWindow):
             QMessageBox.information(self, "Rename Block", "Select a block to rename.")
             return
         block = blocks[0]
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Block", "New name:", text=block.model.name
+        new_name = self.__get_new_name(
+            "Rename Block", "New name:", block.model.name
         )
-        if ok and new_name:
+        if new_name:
             # Check for unique name (excluding current block)
             if self._block_name_exists(new_name, exclude_id=block.model.id):
                 QMessageBox.warning(self, "Error", f"Block name '{new_name}' already exists.")
@@ -534,11 +520,11 @@ class Editor(QMainWindow):
             QMessageBox.warning(self, "Error", "Instance parent is not a BlockFrame.")
             return
         
-        new_name, ok = QInputDialog.getText(
-            self, "Copy Instance", "New instance name:",
-            text=f"{inst.model.name}_copy"
+        new_name = self.__get_new_name(
+            "Copy Instance", "New instance name:",
+            f"{inst.model.name}_copy"
         )
-        if not ok or not new_name:
+        if not new_name:
             return
         
         # Check for unique name within parent block
@@ -569,10 +555,10 @@ class Editor(QMainWindow):
             )
             return
         inst = instances[0]
-        new_name, ok = QInputDialog.getText(
-            self, "Rename Instance", "New name:", text=inst.model.name
+        new_name = self.__get_new_name(
+            "Rename Instance", "New name:", inst.model.name
         )
-        if ok and new_name:
+        if new_name:
             # Get parent block
             parent_block = inst.parentItem()
             if not isinstance(parent_block, BlockFrame):
@@ -677,35 +663,58 @@ class Editor(QMainWindow):
                     self, "Delete Pin", "Only block-level pins can be deleted."
                 )
 
-    def rename_pin(self):
-        """Rename the selected pin in both models."""
-        selected = list(self.scene.selectedItems())
-        ports = [it for it in selected if isinstance(it, PortItem)]
-        if not ports:
-            QMessageBox.information(self, "Rename Pin", "Select a pin to rename.")
-            return
-        pin = ports[0]
+    def __get_new_name(self, title: str, label: str, current_name: str):
+        """Helper to get a new name via input dialog."""
         new_name, ok = QInputDialog.getText(
-            self, "Rename Pin", "New name:", text=pin.model.name
+            self, title, label, text=current_name
         )
         if ok and new_name:
-            try:
-                if pin.owner_id and pin.owner_id.startswith("block:"):
-                    block_id = pin.owner_id.split(":", 1)[1]
-                    block_frame = self.controller.blocks.get(block_id)
-                    if block_frame:
-                        block_name = block_frame.model.name
-                        old_name = pin.model.name
-                        # Update object model
-                        if block_name in self.netlist_project.blocks:
-                            if not self._sync_pin_renamed(block_name, old_name, new_name):
-                                return
-                # Update graphical model
-                pin.model.name = new_name
-                pin.label.setText(new_name)
-                self._save_version(f"Rename pin '{old_name}' to '{new_name}'")
-            except Exception as e:
-                QMessageBox.warning(self, "Error", f"Failed to rename pin: {e}")
+            return new_name
+        return None
+    
+    def rename_pin(self):
+        selected = self.scene.selectedItems()
+        pins = [element for element in selected if isinstance(element, PortItem)]
+        
+        if not pins:
+            QMessageBox.information(self, "Rename Pin", "Select a pin to rename.")
+            return
+        
+        pin = pins[0]
+        
+        if not pin.owner_id.startswith("block:"):
+            QMessageBox.information(self, "Rename Pin", "Only block-level pins can be renamed.")
+            return
+        
+        new_name = self.__get_new_name("Rename Pin", "New name:", pin.model.name)
+        
+        if new_name is None:
+            return
+
+        if not pin.owner_id or not pin.owner_id.startswith("block:"):
+            return
+
+        block_id = pin.owner_id.split(":", 1)[1]
+        block_frame = self.controller.blocks.get(block_id)
+
+        if not block_frame:
+            return
+
+        block_name = block_frame.model.name
+        old_name = pin.model.name
+
+        if not self._sync_pin_renamed(block_name, old_name, new_name):
+            return
+
+        pin.model.name = new_name
+        pin.label.setText(new_name)
+
+        for instance in self.controller.get_instances(block_name):
+            pin = instance.port_items[old_name]
+            pin.model.name = new_name
+            pin.label.setText(new_name)
+
+        self._save_version(f"Rename pin '{old_name}' to '{new_name}'")
 
     def add_net(self):
         """Add a new net connection (wire)."""
@@ -988,9 +997,10 @@ class Editor(QMainWindow):
             QMessageBox.warning(self, "Error", "Selected wire has no name to rename.")
             return
 
-        new_name, ok = QInputDialog.getText(self, "Rename Net", "New name:", text=old_name)
-        if not ok or not new_name or new_name == old_name:
+        new_name = self.__get_new_name("Rename Net", "New name:", old_name)
+        if not new_name or new_name == old_name:
             return
+        
         if self._net_name_exists(block_frame, new_name, exclude=old_name):
             QMessageBox.warning(self, "Error", f"Net name '{new_name}' already exists in this block.")
             return

@@ -4,13 +4,13 @@ from typing import Dict, List, Optional
 
 
 class Instance:
-    def __init__(self, name: str, type: "Block", parent: "Block" = None):
-        self.__type = type
+    def __init__(self, name: str, _type: "Block", parent: "Block" = None):
+        self.__type = _type
         self.__name = name
         self.__parent = parent
         self.__interface_pins = [
-            PinRef(type.interface_pins[pin_name], self)
-            for pin_name in type.interface_pins
+            PinRef(_type.interface_pins[pin_name], self)
+            for pin_name in _type.interface_pins
         ]
 
     @property
