@@ -48,21 +48,13 @@ class Editor(QMainWindow):
         self.current_filter = None
         self._current_block_id = None
         
-        # Initialize version manager
-        version_dir = os.path.join(os.path.curdir, "curcuit_project/.curcuit_cache`")
-        filename = "project_state.json"
-        os.makedirs(version_dir, exist_ok=True)
+        # Initialize version manager (None means unsaved file - will create UUID repository)
+        self.version_manager = VersionManager(None, self.controller)
 
-        # Check if there's a saved state to load
-        saved_state_file = os.path.join(version_dir, filename)
-        if os.path.exists(saved_state_file):
-            # Load the saved state
-            try:
-                self.controller.load_scene(saved_state_file)
-            except Exception as e:
-                print(f"Error loading saved state: {e}")
+        # Initialize default blocks
+        self.controller.add_block("BlockA")
+        self.controller.add_block("BlockB")
 
-        self.version_manager = VersionManager(version_dir, filename, self.controller)
 
         self.setup_menu_bar()
         self.setup_connections()
@@ -72,18 +64,14 @@ class Editor(QMainWindow):
             self.ui.objects_list.setCurrentRow(0)
             self._show_block_by_index(0)
 
-        # Save initial state only if we didn't load from file
-        if not os.path.exists(saved_state_file):
-            # Save initial state
-            try:
-                self.version_manager.save_state("Initial state")
-            except Exception as e:
-                print(f"Error saving initial state: {e}")
+        # Save initial state
+        self._save_version("Initial state")
 
     def _save_version(self, action_name: str):
         """Save current state to version manager."""
         try:
-            self.version_manager.save_state(action_name)
+            # Save to external file if we have one, otherwise just to repository
+            self.version_manager.save_state(action_name, save_to_file=self.current_file_path)
         except Exception as e:
             print(f"Failed to save version: {e}")
 
@@ -182,9 +170,21 @@ class Editor(QMainWindow):
         if file_path:
             self.current_file_path = file_path
             try:
+                # Create new version manager for this file (will load existing repository if available)
+                self.version_manager = VersionManager(file_path, self.controller)
+                
+                # Load the file
                 self.controller.load_scene(file_path)
                 self.refresh_objects_list()
-                self.setWindowTitle(f"Editor - {file_path}")
+                self.ui.setWindowTitle(f"Editor - {file_path}")
+                
+                # Rebuild object model after loading
+                self._rebuild_object_model_from_graphical()
+                
+                if self.ui.objects_list.count() > 0:
+                    self.ui.objects_list.setCurrentRow(0)
+                    self._show_block_by_index(0)
+                
                 QMessageBox.information(self, "Success", f"Loaded: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
@@ -195,7 +195,13 @@ class Editor(QMainWindow):
             self.save_file_as()
         else:
             try:
+                # Associate repository with file if not already associated
+                if self.version_manager.file_path != self.current_file_path:
+                    self.version_manager.associate_with_file(self.current_file_path)
+                
                 self.controller.save_scene(self.current_file_path)
+                # Save version after saving file
+                self._save_version(f"Save file {os.path.basename(self.current_file_path)}")
                 QMessageBox.information(self, "Success", f"Saved: {self.current_file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
@@ -211,8 +217,15 @@ class Editor(QMainWindow):
         if file_path:
             self.current_file_path = file_path
             try:
+                # Associate current repository with the new file
+                self.version_manager.associate_with_file(file_path)
+                
                 self.controller.save_scene(file_path)
-                self.setWindowTitle(f"Editor - {file_path}")
+                self.ui.setWindowTitle(f"Editor - {file_path}")
+                
+                # Save version after saving file
+                self._save_version(f"Save file as {os.path.basename(file_path)}")
+                
                 QMessageBox.information(self, "Success", f"Saved: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
