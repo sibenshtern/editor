@@ -29,7 +29,7 @@ class Shell(WelcomeWindowUI):
     def run_checker(file_name):
         try:
             result = subprocess.run(
-                ["python3", "checker/src/cli.py", "--input", file_name, "-o", "output.json"], capture_output=True, text=True
+                ["python3", "checker/src/cli.py", "--input", file_name, "-o", "output.txt"], capture_output=True, text=True
             )
 
             print("=== STDOUT ===")

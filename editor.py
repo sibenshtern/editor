@@ -11,6 +11,7 @@ from graphical import (Controller, BlockFrame, PortItem, InstanceItem, WireItem,
                        JunctionItem)
 from data import NetlistProject
 from version_manager import VersionManager
+from parser.parser import Parser
 
 
 class Editor(QMainWindow):
@@ -20,6 +21,7 @@ class Editor(QMainWindow):
         
         # Initialize circuit object model
         self.netlist_project = NetlistProject("circuit_project")
+        self.parser = Parser()
                 
         self.ui = EditorWindowUI()
         self.ui.show()
@@ -197,6 +199,7 @@ class Editor(QMainWindow):
                 self.controller.save_scene(self.current_file_path)
                 # Save version after saving file
                 self._save_version(f"Save file {os.path.basename(self.current_file_path)}")
+                self.parser.save_netlist_to_file(f"{self.current_file_path.split('.')[0]}.net", self.netlist_project)
                 QMessageBox.information(self, "Success", f"Saved: {self.current_file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
@@ -220,7 +223,7 @@ class Editor(QMainWindow):
                 
                 # Save version after saving file
                 self._save_version(f"Save file as {os.path.basename(file_path)}")
-                
+                self.parser.save_netlist_to_file(f"{self.current_file_path.split('.')[0]}.net", self.netlist_project)
                 QMessageBox.information(self, "Success", f"Saved: {file_path}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
@@ -733,9 +736,6 @@ class Editor(QMainWindow):
         self._deactivate_mode()
         self.active_mode = 'wire'
         self.controller.set_add_wire_mode(True)
-
-        QMessageBox.information(self, "Add Wire",
-                                "Click a pin/junction to start, then click another pin/junction to complete the wire. Click 'Add Wire' again to cancel.")
 
         def handler(ev):
             if ev.button() != Qt.MouseButton.LeftButton:

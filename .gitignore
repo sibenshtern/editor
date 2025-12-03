@@ -337,3 +337,5 @@ cython_debug/
 .DS_Store
 *.json
 .idea
+
+**/**/__pycache__
