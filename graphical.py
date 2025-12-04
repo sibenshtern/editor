@@ -744,14 +744,14 @@ class Controller:
                 bm.model.wires = [w for w in bm.model.wires if w.id != wid]
         for other_bf in list(self.blocks.values()):
             inst_ids = [inst.id for inst in other_bf.model.instances if
-                        inst.block_id == block_id]
+                        inst.block_name == block_name]
             for iid in inst_ids:
                 inst_item = other_bf.instance_items.get(iid)
                 if inst_item:
                     self.delete_instance(inst_item)
             other_bf.model.instances = [inst for inst in
                                         other_bf.model.instances if
-                                        inst.block_id != block_id]
+                                        inst.block_name != block_name]
         if block_id in self.blocks:
             if bf:
                 for pv in list(bf.port_items.values()):
