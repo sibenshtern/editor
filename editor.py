@@ -430,8 +430,6 @@ class Editor(QMainWindow):
                            bf.model.name == child_name)
         parent_frame = next(bf for bf in self.controller.blocks.values() if
                             bf.model.name == parent_name)
-        QMessageBox.information(self, "Place",
-                                "Click inside parent block to place instance.")
 
         def handler(ev):
             pos = self.view.mapToScene(ev.position().toPoint())
@@ -560,8 +558,6 @@ class Editor(QMainWindow):
     def add_pin(self):
         """Add a new pin to the selected object."""
         self._deactivate_mode()
-        QMessageBox.information(self, "Add Pin",
-                                "Click inside the visible block to add a pin (copied into its instances).")
 
         def handler(ev):
             pos = self.view.mapToScene(ev.position().toPoint())
@@ -1068,9 +1064,6 @@ class Editor(QMainWindow):
         self._deactivate_mode()
         self.active_mode = 'junction'
         self.controller.set_add_junction_mode(True)
-
-        QMessageBox.information(self, "Add Junction",
-                                "Click on an existing wire to add a junction. Click 'Add Junction' again to cancel.")
 
         def handler(ev):
             if ev.button() != Qt.MouseButton.LeftButton:

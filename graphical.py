@@ -677,12 +677,13 @@ class Controller:
         pin_name = pin_item.model.name
         visuals = []
         bf = self.blocks.get(block_id)
+        block_name = bf.model.name
         if bf:
             if pin_name in bf.port_items:
                 visuals.append(bf.port_items[pin_name])
             for other_bf in self.blocks.values():
                 for inst in other_bf.model.instances:
-                    if inst.block_id == block_id:
+                    if inst.block_name == block_name:
                         inst_item = other_bf.instance_items.get(inst.id)
                         if inst_item and pin_name in inst_item.port_items:
                             visuals.append(inst_item.port_items[pin_name])
