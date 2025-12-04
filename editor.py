@@ -1,6 +1,4 @@
-import sys
 import os
-import tempfile
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QInputDialog, QMessageBox, QVBoxLayout,
                              QFileDialog, QGraphicsScene, QGraphicsView)
 from PyQt6.QtCore import Qt, QPointF, QObject
@@ -9,7 +7,7 @@ from PyQt6.QtGui import QColor, QPainter, QBrush
 from ui.editor_ui import EditorWindowUI
 from graphical import (Controller, BlockFrame, PortItem, InstanceItem, WireItem, 
                        JunctionItem)
-from data import NetlistProject
+from netlist_model import NetlistProject
 from version_manager import VersionManager
 from parser.parser import Parser
 
@@ -88,50 +86,11 @@ class Editor(QMainWindow):
             self.controller.show_only_block(first_id)
             self._current_block_id = first_id
 
-    def _rebuild_object_model_from_graphical(self):
+    def _rebuild_object_model_from_graphical(self, file_path: str):
         """Rebuild the entire object model from the graphical model."""
         # Clear object model
-        self.netlist_project = NetlistProject("circuit_project")
-        
-        # Rebuild blocks
-        for block_id, block_frame in self.controller.blocks.items():
-            block_name = block_frame.model.name
-            if block_name not in self.netlist_project.blocks:
-                self.netlist_project.add_block(block_name)
-            
-            # Add pins
-            for port_model in block_frame.model.ports:
-                self.netlist_project.add_pin_to_block(block_name, port_model.name)
-            
-            # Add instances
-            for inst_model in block_frame.model.instances:
-                # Ensure instance type exists
-                if inst_model.block_name not in self.netlist_project.blocks:
-                    self.netlist_project.add_block(inst_model.block_name)
-                
-                self.netlist_project.add_instance_to_block(
-                    block_name, inst_model.name, inst_model.block_name
-                )
-            
-            # Add nets from wires
-            wire_to_net = {}  # Map wire IDs to net names
-            for wire_model in block_frame.model.wires:
-                if wire_model.name:
-                    # Create net only if wire has a name
-                    net_name = wire_model.name
-                    if net_name not in self.netlist_project.blocks[block_name].nets:
-                        self.netlist_project.add_net_to_block(block_name, net_name)
-                    wire_to_net[wire_model.id] = net_name
-                    
-                    # Connect pins
-                    for endpoint in [wire_model.start, wire_model.end]:
-                        if endpoint and len(endpoint) >= 2:
-                            owner_id, pin_name = endpoint[0], endpoint[1]
-                            if not owner_id.startswith("j:") and pin_name:
-                                pin_ref = self._get_pin_ref(block_name, owner_id, pin_name)
-                                if pin_ref:
-                                    self.netlist_project.blocks[block_name].nets[net_name].connect_pin(pin_ref)
-        
+        self.netlist_project, _ = self.parser.load_netlist_from_file(file_path)
+
         self._log_object_model()
 
     def _get_pin_ref(self, block_name: str, owner_id: str, pin_name: str):
@@ -162,27 +121,32 @@ class Editor(QMainWindow):
             self,
             "Open Scene File",
             "",
-            "JSON Files (*.json);;All Files (*)"
+            "JSON Files (*.json);;Netlist File (*.net);;All Files (*)"
         )
         if file_path:
             self.current_file_path = file_path
+
+            file_name = file_path.split('.')[0]
+            graphical_file = f"{file_name}.json"
+            netlist_file = f"{file_name}.net"
+
             try:
                 # Create new version manager for this file (will load existing repository if available)
                 self.version_manager = VersionManager(file_path, self.controller)
                 
                 # Load the file
-                self.controller.load_scene(file_path)
+                self.controller.load_scene(graphical_file)
                 self.refresh_objects_list()
-                self.ui.setWindowTitle(f"Editor - {file_path}")
+                self.ui.setWindowTitle(f"Editor - {netlist_file}")
                 
                 # Rebuild object model after loading
-                self._rebuild_object_model_from_graphical()
+                self._rebuild_object_model_from_graphical(netlist_file)
                 
                 if self.ui.objects_list.count() > 0:
                     self.ui.objects_list.setCurrentRow(0)
                     self._show_block_by_index(0)
                 
-                QMessageBox.information(self, "Success", f"Loaded: {file_path}")
+                QMessageBox.information(self, "Success", f"Loaded: {netlist_file}")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load file: {e}")
 

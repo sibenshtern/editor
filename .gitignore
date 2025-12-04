@@ -338,4 +338,4 @@ cython_debug/
 *.json
 .idea
 
-*__pycache__
+**/__pycache__
