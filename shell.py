@@ -5,6 +5,7 @@ from PyQt6 import QtCore, QtWidgets
 from ui.welcome_window_ui import WelcomeWindowUI
 from ui.checker_ui import CheckerDialog
 from editor import Editor
+from checker.src.checker import FileChecker
 
 
 class Shell(WelcomeWindowUI):
@@ -28,12 +29,11 @@ class Shell(WelcomeWindowUI):
     @staticmethod
     def run_checker(file_name):
         try:
-            result = subprocess.run(
-                ["python3", "checker/src/cli.py", "--input", file_name, "-o" "output.result"], capture_output=True, text=True
-            )
-
-            print("=== RESULT ===")
-            print(result.stdout)
+            checker = FileChecker(file_name)
+            report = checker.check()
+            
+            print("Отчёт чекера:")
+            print(report)
         except FileNotFoundError:
             print("Ошибка: приложение 'check_file' не найдено в PATH.")
         except Exception as e:
