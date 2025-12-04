@@ -701,13 +701,15 @@ class Controller:
             for bm in self.blocks.values():
                 bm.model.wires = [w for w in bm.model.wires if w.id != wid]
         if bf:
+            block_name = bf.model.name
+
             bf.model.ports = [p for p in bf.model.ports if p.name != pin_name]
             if pin_name in bf.port_items:
                 pvis = bf.port_items.pop(pin_name);
                 self.scene.removeItem(pvis)
             for other_bf in self.blocks.values():
                 for inst in list(other_bf.model.instances):
-                    if inst.block_id == block_id:
+                    if inst.block_name == block_name:
                         inst.ports = [p for p in inst.ports if
                                       p.name != pin_name]
                         inst_item = other_bf.instance_items.get(inst.id)
@@ -718,6 +720,8 @@ class Controller:
 
     def delete_block(self, block_frame: 'BlockFrame'):
         block_id = block_frame.model.id
+        block_name = block_frame.model.name
+
         ans = QMessageBox.question(None, "Delete block",
                                    f"Delete block '{block_frame.model.name}' and all its instances and wires?",
                                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
@@ -729,7 +733,7 @@ class Controller:
             all_pin_visuals.extend(list(bf.port_items.values()))
         for other_bf in self.blocks.values():
             for inst in list(other_bf.model.instances):
-                if inst.block_id == block_id:
+                if inst.block_name == block_name:
                     inst_item = other_bf.instance_items.get(inst.id)
                     if inst_item:
                         all_pin_visuals.extend(
