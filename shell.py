@@ -29,16 +29,11 @@ class Shell(WelcomeWindowUI):
     def run_checker(file_name):
         try:
             result = subprocess.run(
-                ["python3", "checker/src/cli.py", "--input", file_name, "-o", "output.txt"], capture_output=True, text=True
+                ["python3", "checker/src/cli.py", "--input", file_name, "-o" "output.result"], capture_output=True, text=True
             )
 
-            print("=== STDOUT ===")
+            print("=== RESULT ===")
             print(result.stdout)
-            print("=== STDERR ===")
-            print(result.stderr)
-
-            print(f"Exit code: {result.returncode}")
-
         except FileNotFoundError:
             print("Ошибка: приложение 'check_file' не найдено в PATH.")
         except Exception as e:
