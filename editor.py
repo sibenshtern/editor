@@ -856,6 +856,7 @@ class Editor(QMainWindow):
                                     self.netlist_project.blocks_instances[
                                         model_name]:
                                 if instance.name == end_block_name:
+                                    print(instance.interface_pins)
                                     end_pin = instance.interface_pins[
                                         end_name]
 

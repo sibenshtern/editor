@@ -343,8 +343,9 @@ class NetlistProject:
 
     def add_pin_to_block(self, block_name: str, pin_name: str) -> PinRef:
         block = self.__blocks[block_name]
+        added_pin = block.add_interface_pin(pin_name)
         self.__update_block_instances(block_name)
-        return block.add_interface_pin(pin_name)
+        return added_pin
 
     def remove_pin_from_block(self, block_name: str, pin_name: str):
         block = self.__blocks[block_name]

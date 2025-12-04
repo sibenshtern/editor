@@ -70,9 +70,6 @@ class InstanceModel:
                              w=d.get("w", 120.0), h=d.get("h", 60.0),
                              ports=ports)
 
-    def update_obj_mod():
-        pass
-
     def copy(self) -> "InstanceModel":
         """Create a deep copy of this instance with new ID."""
         from copy import deepcopy
@@ -158,9 +155,6 @@ class JunctionModel:
         return JunctionModel(id=d.get("id", new_id()), x=d.get("x", 0.0),
                              y=d.get("y", 0.0), wire_id=d.get("wire_id"))
 
-    def update_obj_mod():
-        pass
-
     def copy(self, wire_id_map: Dict[str, str] = None) -> "JunctionModel":
         """Create a copy of this junction with new ID and updated wire reference.
         
@@ -222,9 +216,6 @@ class BlockModel:
                           ports=ports, instances=instances, wires=wires,
                           junctions=junctions)
 
-    def update_obj_mod():
-        pass
-
     def copy(self, offset_x: float = 50, offset_y: float = 50, block_id_map: Dict[str, str] = None) -> "BlockModel":
         """Create a deep copy of this block with new IDs for all contents.
         
@@ -281,9 +272,9 @@ def project_point_to_segment(p: QPointF, a: QPointF, b: QPointF) -> QPointF:
     ax, ay = a.x(), a.y()
     bx, by = b.x(), b.y()
     px, py = p.x(), p.y()
-    vx = bx - ax;
+    vx = bx - ax
     vy = by - ay
-    wx = px - ax;
+    wx = px - ax
     wy = py - ay
     vlen2 = vx * vx + vy * vy
     if vlen2 == 0:
@@ -339,9 +330,9 @@ class PortItem(QGraphicsEllipseItem):
         new_local = self.pos() + delta_local
         nx = min(max(new_local.x(), 0.0), rect.width())
         ny = min(max(new_local.y(), 0.0), rect.height())
-        left = nx;
-        right = rect.width() - nx;
-        top = ny;
+        left = nx
+        right = rect.width() - nx
+        top = ny
         bottom = rect.height() - ny
         m = min(left, right, top, bottom)
         if m == left:
@@ -398,7 +389,7 @@ class InstanceItem(QGraphicsRectItem):
             nx = min(max(new_local.x(), 0.0), max_x if max_x > 0 else 0.0)
             ny = min(max(new_local.y(), 0.0), max_y if max_y > 0 else 0.0)
             self.setPos(nx, ny)
-            self.model.x = nx;
+            self.model.x = nx
             self.model.y = ny
             self.controller.update_wires_for_instance(self)
             event.accept()
@@ -582,7 +573,7 @@ class Controller:
                                     owner_id=inst.id, color=QColor("orange"))
                         else:
                             pin_vis = inst_item.port_items[port_model.name]
-                            pin_vis.model.x = port_model.x;
+                            pin_vis.model.x = port_model.x
                             pin_vis.model.y = port_model.y
                             pin_vis.update_from_model()
 
@@ -694,7 +685,7 @@ class Controller:
             wi = self.current_wire_items.get(wid)
             if wi:
                 try:
-                    self.scene.removeItem(wi);
+                    self.scene.removeItem(wi)
                     del self.current_wire_items[wid]
                 except Exception:
                     pass
@@ -705,7 +696,7 @@ class Controller:
 
             bf.model.ports = [p for p in bf.model.ports if p.name != pin_name]
             if pin_name in bf.port_items:
-                pvis = bf.port_items.pop(pin_name);
+                pvis = bf.port_items.pop(pin_name)
                 self.scene.removeItem(pvis)
             for other_bf in self.blocks.values():
                 for inst in list(other_bf.model.instances):
@@ -714,7 +705,7 @@ class Controller:
                                       p.name != pin_name]
                         inst_item = other_bf.instance_items.get(inst.id)
                         if inst_item and pin_name in inst_item.port_items:
-                            pvis = inst_item.port_items.pop(pin_name);
+                            pvis = inst_item.port_items.pop(pin_name)
                             self.scene.removeItem(pvis)
         self._cleanup_orphan_junctions()
 
@@ -745,7 +736,7 @@ class Controller:
             wi = self.current_wire_items.get(wid)
             if wi:
                 try:
-                    self.scene.removeItem(wi);
+                    self.scene.removeItem(wi)
                     del self.current_wire_items[wid]
                 except Exception:
                     pass
@@ -794,7 +785,7 @@ class Controller:
             found = False
             for bm in self.blocks.values():
                 if any(j.id == jid for j in bm.model.junctions):
-                    found = True;
+                    found = True
                     break
             if not found:
                 try:
@@ -864,10 +855,10 @@ class Controller:
 
         def id_for(o):
             if isinstance(o, PortItem):
-                return (o.owner_id or "unknown", o.model.name)
+                return o.owner_id or "unknown", o.model.name
             if isinstance(o, JunctionItem):
-                return (f"j:{o.model.id}", "")
-            return ("unknown", "")
+                return f"j:{o.model.id}", ""
+            return "unknown", ""
 
         wm = WireModel(start=id_for(start), end=id_for(end))
 
@@ -1122,7 +1113,7 @@ class Controller:
     Optional[Any]:
         key, pname = info
         if key.startswith("j:"):
-            jid = key.split(":", 1)[1];
+            jid = key.split(":", 1)[1]
             return self.current_junction_items.get(jid)
         if key.startswith("block:"):
             _, bid = key.split(":", 1)
@@ -1340,9 +1331,9 @@ class BlockFrame(QGraphicsRectItem):
                 self.setPos(new_scene_x, new_scene_y)
 
             self.setRect(0.0, 0.0, new_w, new_h)
-            self.model.w = new_w;
+            self.model.w = new_w
             self.model.h = new_h
-            self.model.x = self.pos().x();
+            self.model.x = self.pos().x()
             self.model.y = self.pos().y()
 
             for pvis in self.port_items.values():
@@ -1357,7 +1348,7 @@ class BlockFrame(QGraphicsRectItem):
                 nx = min(max(new_local.x(), 0.0), max_x)
                 ny = min(max(new_local.y(), 0.0), max_y)
                 inst_item.setPos(nx, ny)
-                inst_item.model.x = nx;
+                inst_item.model.x = nx
                 inst_item.model.y = ny
 
             for pvis in self.port_items.values():
@@ -1380,7 +1371,7 @@ class BlockFrame(QGraphicsRectItem):
                                  "bottom": False}
             self.setCursor(Qt.CursorShape.ArrowCursor)
             self._inst_scene_positions.clear()
-            self.model.x = self.pos().x();
+            self.model.x = self.pos().x()
             self.model.y = self.pos().y()
             event.accept()
             return
@@ -1543,7 +1534,7 @@ class BlockEditor(QWidget):
         if new_bid is None:
             return
         if self._current_block_id is None:
-            self._show_block_by_index(idx);
+            self._show_block_by_index(idx)
             return
         if new_bid == self._current_block_id: return
         ans = QMessageBox.question(self, "Save changes",
@@ -1602,7 +1593,7 @@ class BlockEditor(QWidget):
         if not ok: return
         if child_name == parent_name:
             QMessageBox.warning(self, "Error",
-                                "Cannot insert block into itself.");
+                                "Cannot insert block into itself.")
             return
         child_frame = next(bf for bf in self.controller.blocks.values() if
                            bf.model.name == child_name)
@@ -1626,7 +1617,7 @@ class BlockEditor(QWidget):
                 if ev.type() == 2: return handler(ev)
                 return False
 
-        filter_obj = OneShot();
+        filter_obj = OneShot()
         self.view.viewport().installEventFilter(filter_obj)
 
     def _on_add_pin(self):
@@ -1649,18 +1640,18 @@ class BlockEditor(QWidget):
                 if ev.type() == 2: return handler(ev)
                 return False
 
-        filter_obj = OneShot();
+        filter_obj = OneShot()
         self.view.viewport().installEventFilter(filter_obj)
 
     def _controller_add_block_pin_at_point(self, block_frame: BlockFrame,
                                            scene_pos: QPointF):
         local = block_frame.mapFromScene(scene_pos)
         rect = block_frame.rect()
-        lx = min(max(local.x(), 0.0), rect.width());
+        lx = min(max(local.x(), 0.0), rect.width())
         ly = min(max(local.y(), 0.0), rect.height())
-        left = lx;
-        right = rect.width() - lx;
-        top = ly;
+        left = lx
+        right = rect.width() - lx
+        top = ly
         bottom = rect.height() - ly
         m = min(left, right, top, bottom)
         if m == left:
@@ -1821,9 +1812,9 @@ Tuple[QPointF, float]:
     ax, ay = a.x(), a.y()
     bx, by = b.x(), b.y()
     px, py = p.x(), p.y()
-    vx = bx - ax;
+    vx = bx - ax
     vy = by - ay
-    wx = px - ax;
+    wx = px - ax
     wy = py - ay
     vlen2 = vx * vx + vy * vy
     if vlen2 == 0:
