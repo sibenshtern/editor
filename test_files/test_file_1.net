@@ -1,0 +1,12 @@
+Block1:
+pin P1
+pin P2
+
+Block2:
+pin P1 - net_1
+pin P2 - net_2
+
+instance Block1_inst1: Block1
+
+Block1_inst1.P1 - net_1
+Block1_inst1.P2 - net_2

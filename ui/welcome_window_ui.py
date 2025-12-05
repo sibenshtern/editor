@@ -46,7 +46,7 @@ class WelcomeWindowUI(object):
         self.greeting_label.setText(
             translate("main_window", "Welcome to the Schema Editor app.")
         )
-        self.checker_button.setText(translate("main_window", "Cheker"))
+        self.checker_button.setText(translate("main_window", "Cheсker"))
         self.editor_button.setText(translate("main_window", "Editor"))
 
 
