@@ -1,6 +1,3 @@
 [submodule "parser"]
 	path = parser
 	url = git@github.com:yunhkirill/parser.git
-[submodule "checker"]
-	path = checker
-	url = git@github.com:byllet/checker.git
